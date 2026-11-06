@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { timestampSchema } from './common.js';
 
 export const subscriptionStatusSchema = z.enum([
+  /** El backend usa `none` cuando el usuario todavía no tiene suscripción. */
+  'none',
   'pending',
   'active',
   'paused',
