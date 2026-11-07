@@ -14,15 +14,16 @@ No contiene lógica de negocio, ni secretos, ni acceso a `/api/internal/*`.
 ```bash
 # En geo-intelligence-web o geo-intelligence-mobile
 git submodule add git@github.com:Etzary/geo-intelligence-contract.git packages/contract
-npm install
 ```
 
-En `package.json` del consumidor:
+En el `package.json` del consumidor, declara el submódulo como workspace y añádelo
+como dependencia; así `npm install` lo enlaza y su `prepare` lo compila a `dist/`:
 
 ```json
 {
+  "workspaces": ["packages/contract"],
   "dependencies": {
-    "@geo-intelligence/contract": "file:packages/contract"
+    "@geo-intelligence/contract": "*"
   }
 }
 ```
