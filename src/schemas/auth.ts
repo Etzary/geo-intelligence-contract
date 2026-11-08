@@ -29,6 +29,8 @@ export const userSchema = z.object({
   is_2fa_enabled: z.boolean(),
   two_factor_method: twoFactorMethodSchema.optional(),
   provider: z.string().optional(),
+  /** Presente cuando la cuenta tiene una identidad de Google vinculada. */
+  google_id: z.string().optional(),
   created_at: timestampSchema,
   updated_at: timestampSchema,
 });
@@ -89,6 +91,16 @@ export type Verify2faInput = z.infer<typeof verify2faInputSchema>;
 
 export const googleInputSchema = z.object({ id_token: z.string().min(1) });
 export type GoogleInput = z.infer<typeof googleInputSchema>;
+
+/**
+ * `google/link` vincula una cuenta de Google a la sesión ya autenticada. Reusa
+ * el mismo `id_token` del login y devuelve el usuario actualizado.
+ */
+export const googleLinkResponseSchema = z.object({
+  message: z.string(),
+  user: userSchema,
+});
+export type GoogleLinkResponse = z.infer<typeof googleLinkResponseSchema>;
 
 export const verifyCodeInputSchema = z.object({ code: verificationCodeSchema });
 export type VerifyCodeInput = z.infer<typeof verifyCodeInputSchema>;

@@ -143,6 +143,12 @@ export function createMockHandlers({ baseUrl, state = createMockState() }: MockH
     http.post(url('/api/auth/google'), () =>
       HttpResponse.json({ ...session(state), message: '¡Inicio de sesión con Google exitoso!' }),
     ),
+    http.post(url('/api/auth/google/link'), () =>
+      HttpResponse.json({
+        message: '¡Cuenta de Google vinculada exitosamente!',
+        user: { ...state.user, google_id: 'mock-google-id' },
+      }),
+    ),
     http.post(url('/api/auth/logout'), () => HttpResponse.json({ message: 'Sesión cerrada exitosamente' })),
     http.post(url('/api/auth/verify-email'), () =>
       HttpResponse.json({ message: '¡Correo verificado exitosamente!', token: state.token }),
