@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { timestampSchema } from './common.js';
+import { emailSchema, timestampSchema } from './common.js';
 
 export const subscriptionStatusSchema = z.enum([
   /** El backend usa `none` cuando el usuario todavía no tiene suscripción. */
@@ -52,12 +52,15 @@ export type SubscriptionView = z.infer<typeof subscriptionViewSchema>;
  * Cuerpo de `POST /api/subscriptions/subscribe`.
  * `card_token` y `device_session_id` solo hacen falta con OpenPay: la tarjeta se
  * tokeniza en el navegador (Openpay.js) y **nunca** viaja al backend.
+ * `payer_email` lo envía el flujo de fallback de Mercado Pago cuando el correo
+ * de la cuenta de la app no es una cuenta de Mercado Pago.
  */
 export const subscribeInputSchema = z.object({
   plan_code: z.string().min(1, 'Elige un plan'),
   provider: paymentProviderSchema,
   card_token: z.string().optional(),
   device_session_id: z.string().optional(),
+  payer_email: emailSchema.optional(),
 });
 export type SubscribeInput = z.infer<typeof subscribeInputSchema>;
 
