@@ -120,3 +120,47 @@ export const accessLogResponseSchema = z.object({
   access_log: z.array(accessLogEntrySchema),
 });
 export type AccessLogResponse = z.infer<typeof accessLogResponseSchema>;
+
+/**
+ * Cuerpo de `POST /api/medical/check-in`: la "señal verde" con la que el titular
+ * avisa a sus contactos de emergencia de que está bien. Solo funciona con sesión
+ * iniciada.
+ *
+ * La ubicación es opcional y decide el propio usuario: si `include_location` es
+ * `false` no se comparte ninguna; si es `true` pero falta `location` (el
+ * navegador no dio permiso o no pudo medirla), el backend adjunta la última
+ * ubicación registrada del titular, si sigue vigente.
+ */
+export const checkInInputSchema = z.object({
+  include_location: z.boolean(),
+  location: geoPointSchema.optional(),
+});
+export type CheckInInput = z.infer<typeof checkInInputSchema>;
+
+/** De dónde salió la ubicación adjuntada a la señal verde. */
+export const checkInLocationSourceSchema = z.enum([
+  /** La midió el dispositivo en ese momento. */
+  'current',
+  /** Se reutilizó la última ubicación sincronizada porque no había una actual. */
+  'last_known',
+  /** No se adjuntó ninguna ubicación. */
+  'none',
+]);
+export type CheckInLocationSource = z.infer<typeof checkInLocationSourceSchema>;
+
+/** Respuesta de `POST /api/medical/check-in`. */
+export const checkInResultSchema = z.object({
+  message: z.string(),
+  /** Contactos alcanzados por al menos un canal. */
+  notified: z.number().int().nonnegative(),
+  /** Contactos sin ningún canal exitoso. */
+  failed: z.number().int().nonnegative(),
+  /** Contactos considerados. */
+  total: z.number().int().nonnegative(),
+  channels: z.array(z.string()),
+  location_source: checkInLocationSourceSchema,
+  location: geoPointSchema.optional(),
+  /** Cuándo se midió esa ubicación, no cuándo llegó al servidor. */
+  recorded_at: timestampSchema.optional(),
+});
+export type CheckInResult = z.infer<typeof checkInResultSchema>;

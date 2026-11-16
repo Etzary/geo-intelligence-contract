@@ -1,7 +1,17 @@
 import { HttpResponse, http, type RequestHandler } from 'msw';
 import type { AuthSession, User } from '../schemas/auth.js';
 import type { EmergencyAlertResult, EmergencyInfo } from '../schemas/emergency.js';
-import type { AccessLogEntry, MedicalData, MedicalProfileView } from '../schemas/medical.js';
+import type { AccessLogEntry, CheckInResult, MedicalData, MedicalProfileView } from '../schemas/medical.js';
+import type {
+  AnalyticsOverview,
+  MedicalAnalytics,
+  OpsGrant,
+  OpsPlanUpdateResponse,
+  OpsPlansResponse,
+  OpsResyncResponse,
+  OpsSession,
+  SubscriptionAnalytics,
+} from '../schemas/ops.js';
 import type { Plan, SubscribeOutcome, SubscriptionView } from '../schemas/subscription.js';
 
 /** Estado en memoria que respaldan los handlers; se puede precargar o mutar en los tests. */
@@ -17,6 +27,10 @@ export type MockState = {
   plans: Plan[];
   providers: string[];
   subscription: SubscriptionView | null;
+  /** Señales verdes enviadas hoy, para la analítica médica. */
+  checkIns24h: number;
+  /** Operador de la consola de administración. */
+  opsGrant: OpsGrant;
 };
 
 const now = () => new Date().toISOString();
@@ -99,6 +113,12 @@ export function createMockState(overrides: Partial<MockState> = {}): MockState {
       active: true,
       current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       available_providers: ['mercadopago', 'openpay'],
+    },
+    checkIns24h: 3,
+    opsGrant: {
+      email: 'ops@example.com',
+      name: 'Operaciones',
+      role: 'owner',
     },
     ...overrides,
   };
@@ -200,6 +220,36 @@ export function createMockHandlers({ baseUrl, state = createMockState() }: MockH
       return HttpResponse.json({ message: 'Acceso de emergencia desactivado' });
     }),
     http.get(url('/api/medical/access-log'), () => HttpResponse.json({ access_log: state.accessLog })),
+    http.post(url('/api/medical/check-in'), async ({ request }) => {
+      const body = (await request.json()) as { include_location?: boolean; location?: unknown };
+      const contacts = state.medicalData.emergency_contacts ?? [];
+      if (contacts.length === 0) {
+        return HttpResponse.json(
+          { error: 'este perfil no tiene contactos de emergencia registrados' },
+          { status: 400 },
+        );
+      }
+
+      const includeLocation = body.include_location ?? false;
+      const currentLocation =
+        body.location as CheckInResult['location'] | undefined;
+
+      const result: CheckInResult = {
+        message: `Avisamos a ${contacts.length} contacto(s) de que estás bien.`,
+        notified: contacts.length,
+        failed: 0,
+        total: contacts.length,
+        channels: ['sms', 'email'],
+        location_source: includeLocation ? (currentLocation ? 'current' : 'last_known') : 'none',
+        location: includeLocation ? (currentLocation ?? LAST_KNOWN_LOCATION) : undefined,
+        recorded_at: includeLocation
+          ? (currentLocation ? now() : new Date(Date.now() - 30 * 60 * 1000).toISOString())
+          : undefined,
+      };
+      state.checkIns24h += 1;
+
+      return HttpResponse.json(result);
+    }),
 
     // --- Suscripciones ---
     http.get(url('/api/subscriptions/plans'), () =>
@@ -267,7 +317,105 @@ export function createMockHandlers({ baseUrl, state = createMockState() }: MockH
       };
       return HttpResponse.json(result);
     }),
+
+    // --- Consola de operaciones (solo web, inicio de sesión aparte) ---
+    http.post(url('/api/ops/auth/login'), () => {
+      const session: OpsSession = { message: 'Sesión iniciada', grant: state.opsGrant };
+      return HttpResponse.json(session);
+    }),
+    http.post(url('/api/ops/auth/logout'), () => HttpResponse.json({ message: 'Sesión cerrada' })),
+    http.get(url('/api/ops/auth/me'), () => {
+      const session: OpsSession = { message: 'Sesión vigente', grant: state.opsGrant };
+      return HttpResponse.json(session);
+    }),
+    http.get(url('/api/ops/analytics/overview'), () => {
+      const overview: AnalyticsOverview = {
+        generated_at: now(),
+        providers: state.providers,
+        users: {
+          total: 128,
+          email_verified: 96,
+          phone_verified: 54,
+          two_factor_users: 21,
+        },
+        medical: medicalAnalytics(state),
+        subscriptions: subscriptionAnalytics(state),
+      };
+      return HttpResponse.json(overview);
+    }),
+    http.get(url('/api/ops/analytics/subscriptions'), () =>
+      HttpResponse.json(subscriptionAnalytics(state)),
+    ),
+    http.get(url('/api/ops/analytics/medical'), () => HttpResponse.json(medicalAnalytics(state))),
+    http.get(url('/api/ops/plans'), () => {
+      const response: OpsPlansResponse = { plans: state.plans };
+      return HttpResponse.json(response);
+    }),
+    http.patch(url('/api/ops/plans/:code'), async ({ params, request }) => {
+      const body = (await request.json()) as Partial<Plan>;
+      const existing = state.plans.find((plan) => plan.code === params.code);
+      if (!existing) {
+        return HttpResponse.json({ error: 'plan no encontrado' }, { status: 404 });
+      }
+
+      const updated: Plan = {
+        ...existing,
+        name: body.name ?? existing.name,
+        description: body.description ?? existing.description,
+        amount: body.amount ?? existing.amount,
+        currency: body.currency ?? existing.currency,
+        interval_months: body.interval_months ?? existing.interval_months,
+        active: body.active ?? existing.active,
+      };
+      state.plans = state.plans.map((plan) => (plan.code === updated.code ? updated : plan));
+
+      const response: OpsPlanUpdateResponse = {
+        message: 'Plan actualizado correctamente',
+        plan: updated,
+      };
+      return HttpResponse.json(response);
+    }),
+    http.post(url('/api/ops/subscriptions/resync'), () => {
+      if (!state.subscription) {
+        return HttpResponse.json({ error: 'este usuario no tiene suscripción' }, { status: 404 });
+      }
+      const response: OpsResyncResponse = {
+        message: 'Sincronización completada',
+        subscription: state.subscription,
+      };
+      return HttpResponse.json(response);
+    }),
   ];
+}
+
+/** Última ubicación conocida que usa el mock cuando no llega una actual. */
+const LAST_KNOWN_LOCATION = { lat: 19.432608, lng: -99.133209, accuracy: 25 };
+
+function medicalAnalytics(state: MockState): MedicalAnalytics {
+  return {
+    profiles: 64,
+    emergency_enabled: state.emergencyEnabled ? 41 : 40,
+    access_logs_24h: state.accessLog.length,
+    check_ins_24h: state.checkIns24h,
+  };
+}
+
+function subscriptionAnalytics(state: MockState): SubscriptionAnalytics {
+  const active = state.subscription?.active ? 1 : 0;
+
+  return {
+    total: 37,
+    active: active + 30,
+    pending: 3,
+    paused: 1,
+    cancelled: 2,
+    expired: 1,
+    payment_events_24h: 12,
+    needs_reconciliation: 2,
+    estimated_monthly_revenue: 2970,
+    by_provider: state.providers.map((provider) => ({ key: provider, count: 18 })),
+    by_plan: state.plans.map((plan) => ({ key: plan.code, count: 12 })),
+  };
 }
 
 function emergencyUrl(state: MockState): string {
