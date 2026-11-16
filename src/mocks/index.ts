@@ -6,6 +6,7 @@ import type {
   AnalyticsOverview,
   MedicalAnalytics,
   OpsGrant,
+  OpsGrantResponse,
   OpsPlanUpdateResponse,
   OpsPlansResponse,
   OpsResyncResponse,
@@ -31,6 +32,8 @@ export type MockState = {
   checkIns24h: number;
   /** Operador de la consola de administración. */
   opsGrant: OpsGrant;
+  /** Token (ficticio) de la sesión de la consola de administración. */
+  opsToken: string;
 };
 
 const now = () => new Date().toISOString();
@@ -120,6 +123,7 @@ export function createMockState(overrides: Partial<MockState> = {}): MockState {
       name: 'Operaciones',
       role: 'owner',
     },
+    opsToken: 'mock.ops.jwt.token',
     ...overrides,
   };
 }
@@ -320,13 +324,17 @@ export function createMockHandlers({ baseUrl, state = createMockState() }: MockH
 
     // --- Consola de operaciones (solo web, inicio de sesión aparte) ---
     http.post(url('/api/ops/auth/login'), () => {
-      const session: OpsSession = { message: 'Sesión iniciada', grant: state.opsGrant };
+      const session: OpsSession = {
+        message: 'Sesión iniciada',
+        token: state.opsToken,
+        grant: state.opsGrant,
+      };
       return HttpResponse.json(session);
     }),
     http.post(url('/api/ops/auth/logout'), () => HttpResponse.json({ message: 'Sesión cerrada' })),
     http.get(url('/api/ops/auth/me'), () => {
-      const session: OpsSession = { message: 'Sesión vigente', grant: state.opsGrant };
-      return HttpResponse.json(session);
+      const response: OpsGrantResponse = { message: 'Sesión vigente', grant: state.opsGrant };
+      return HttpResponse.json(response);
     }),
     http.get(url('/api/ops/analytics/overview'), () => {
       const overview: AnalyticsOverview = {

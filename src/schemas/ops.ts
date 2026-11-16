@@ -30,12 +30,24 @@ export const opsLoginInputSchema = z.object({
 });
 export type OpsLoginInput = z.infer<typeof opsLoginInputSchema>;
 
-/** Respuesta de `POST /api/ops/auth/login` y de `GET /api/ops/auth/me`. */
+/**
+ * Respuesta de `POST /api/ops/auth/login`: el token de la consola y la identidad
+ * del operador. El token es propio de la consola y no sirve para las rutas de
+ * usuario, ni al revés.
+ */
 export const opsSessionSchema = z.object({
   message: z.string(),
+  token: z.string().min(1),
   grant: opsGrantSchema,
 });
 export type OpsSession = z.infer<typeof opsSessionSchema>;
+
+/** Respuesta de `GET /api/ops/auth/me`: solo la identidad, sin volver a emitir token. */
+export const opsGrantResponseSchema = z.object({
+  message: z.string(),
+  grant: opsGrantSchema,
+});
+export type OpsGrantResponse = z.infer<typeof opsGrantResponseSchema>;
 
 /** Conteo agrupado por una clave (proveedor, plan, estado…). */
 export const countBreakdownSchema = z.object({
