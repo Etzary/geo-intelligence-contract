@@ -9,6 +9,22 @@ export type QueryParams = Record<string, QueryValue>;
 
 export type TokenProvider = () => string | null | undefined | Promise<string | null | undefined>;
 
+/**
+ * Firma una petición: recibe la cadena canónica y devuelve el HMAC-SHA256 en
+ * hexadecimal, o `null` para no firmarla (p. ej. el móvil antes de iniciar
+ * sesión, cuando aún no tiene clave). La implementación del HMAC vive en cada
+ * plataforma (Node en el BFF, `expo-crypto` en el móvil); la cadena canónica la
+ * construye este cliente para que cliente y backend no puedan divergir.
+ */
+export type RequestSigner = (canonical: string) => Promise<string | null> | string | null;
+
+/** Nombres de las cabeceras con las que viaja la firma de cada petición. */
+export const SIGNATURE_HEADERS = {
+  timestamp: 'X-GI-Timestamp',
+  nonce: 'X-GI-Nonce',
+  signature: 'X-GI-Signature',
+} as const;
+
 export type RequestOptions<T> = {
   /** Por defecto `GET`. */
   method?: HttpMethod;
@@ -35,8 +51,14 @@ export type ApiClientOptions = {
   onUnauthorized?: (error: ApiError) => void;
   fetchImpl?: typeof fetch;
   defaultHeaders?: Record<string, string>;
-  /** Validación global con Zod. Por defecto: activa fuera de producción. */
+  /** Validación global con Zod. Por defecto: activa. */
   validateResponses?: boolean;
+  /**
+   * Firma cada petición con HMAC-SHA256 para que el backend pueda detectar que
+   * alguien la modificó, y rechazar un reenvío (replay) por su nonce. Si no se
+   * define, las peticiones viajan sin firma y el backend decide si las acepta.
+   */
+  signRequest?: RequestSigner;
 };
 
 export type ApiClient = {
@@ -120,10 +142,43 @@ async function readBody(response: Response): Promise<unknown> {
   }
 }
 
-/** Valida las respuestas en desarrollo; en producción depende del consumidor. */
+/**
+ * Valida las respuestas con Zod siempre, también en producción. Antes se
+ * desactivaba en producción por rendimiento, pero una respuesta con forma
+ * inesperada (backend comprometido o intermediario que altera el tráfico) debe
+ * rechazarse en lugar de propagarse a la UI sin comprobar.
+ */
 function defaultValidateResponses(): boolean {
-  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-  return env?.NODE_ENV !== 'production';
+  return true;
+}
+
+/** Nonce de 16 bytes para la firma: solo necesita ser irrepetible, no secreto. */
+function createNonce(): string {
+  const bytes = new Uint8Array(16);
+  const webCrypto = (globalThis as { crypto?: { getRandomValues?: (array: Uint8Array) => void } })
+    .crypto;
+  if (webCrypto?.getRandomValues) {
+    webCrypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Cadena canónica que el backend reconstruye para verificar la firma. Cualquier
+ * cambio en método, ruta, query, marca de tiempo, nonce o cuerpo invalida el
+ * HMAC, de modo que una petición alterada no puede pasar la verificación.
+ */
+function buildCanonicalRequest(
+  method: string,
+  pathname: string,
+  search: string,
+  timestamp: string,
+  nonce: string,
+  body: string,
+): string {
+  return [method, pathname, search.replace(/^\?/, ''), timestamp, nonce, body].join('\n');
 }
 
 /**
@@ -164,13 +219,40 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       if (token) finalHeaders.Authorization = `Bearer ${token}`;
     }
 
+    const serializedBody = body === undefined ? undefined : JSON.stringify(body);
+
+    // Firma de la petición: el backend recalcula el HMAC sobre los mismos datos
+    // y rechaza la petición si no cuadra o si el nonce ya se usó.
+    if (options.signRequest) {
+      const { pathname, search } = new URL(url);
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      const nonce = createNonce();
+      const canonical = buildCanonicalRequest(
+        method,
+        pathname,
+        search,
+        timestamp,
+        nonce,
+        serializedBody ?? '',
+      );
+      const signature = await options.signRequest(canonical);
+
+      // Sin clave (p. ej. el móvil antes de iniciar sesión) la petición viaja sin
+      // firma: el backend decide si esa ruta puede aceptarse así.
+      if (signature) {
+        finalHeaders[SIGNATURE_HEADERS.timestamp] = timestamp;
+        finalHeaders[SIGNATURE_HEADERS.nonce] = nonce;
+        finalHeaders[SIGNATURE_HEADERS.signature] = signature;
+      }
+    }
+
     let response: Response;
     try {
       response = await fetchImpl(url, {
         method,
         headers: finalHeaders,
         signal,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: serializedBody,
         // Los datos médicos nunca deben quedar en la caché HTTP.
         cache: 'no-store',
       });

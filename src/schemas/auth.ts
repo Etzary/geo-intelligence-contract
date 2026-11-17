@@ -62,6 +62,12 @@ export const authSessionSchema = z.object({
   message: z.string(),
   token: z.string().min(1),
   user: userSchema,
+  /**
+   * Clave con la que el cliente firma cada petición (HMAC). El backend solo la
+   * envía si tiene activada la firma de peticiones; sin ella las peticiones de
+   * la app viajan sin firmar.
+   */
+  signing_key: z.string().optional(),
 });
 export type AuthSession = z.infer<typeof authSessionSchema>;
 
