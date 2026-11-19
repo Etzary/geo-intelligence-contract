@@ -143,3 +143,43 @@ export const opsResyncResponseSchema = z.object({
   subscription: subscriptionViewSchema,
 });
 export type OpsResyncResponse = z.infer<typeof opsResyncResponseSchema>;
+
+/**
+ * Origen del valor que está surtiendo efecto en un ajuste. Se resuelve en
+ * cascada: el documento de la base de datos manda, luego la variable de entorno
+ * y, si no hay ninguno, el valor por defecto que trae el código.
+ */
+export const opsSettingSourceSchema = z.enum(['database', 'env', 'default']);
+export type OpsSettingSource = z.infer<typeof opsSettingSourceSchema>;
+
+/** Un ajuste operativo editable en caliente desde la consola. */
+export const opsSettingSchema = z.object({
+  key: z.string(),
+  value: z.string(),
+  source: opsSettingSourceSchema,
+  /** Variable de entorno de la que hereda el ajuste si no hay documento. */
+  env_var: z.string(),
+  /** Valor que trae el código por defecto. */
+  default: z.string(),
+  description: z.string(),
+});
+export type OpsSetting = z.infer<typeof opsSettingSchema>;
+
+/** Respuesta de `GET /api/ops/settings`. */
+export const opsSettingsResponseSchema = z.object({
+  settings: z.array(opsSettingSchema).nullish().transform((value) => value ?? []),
+});
+export type OpsSettingsResponse = z.infer<typeof opsSettingsResponseSchema>;
+
+/** Cuerpo de `PATCH /api/ops/settings/:key`. El valor usa el mismo formato que su variable de entorno. */
+export const updateSettingInputSchema = z.object({
+  value: z.string().min(1, 'Escribe un valor'),
+});
+export type UpdateSettingInput = z.infer<typeof updateSettingInputSchema>;
+
+/** Respuesta de `PATCH /api/ops/settings/:key`. */
+export const opsSettingUpdateResponseSchema = z.object({
+  message: z.string(),
+  setting: opsSettingSchema,
+});
+export type OpsSettingUpdateResponse = z.infer<typeof opsSettingUpdateResponseSchema>;
