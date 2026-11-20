@@ -67,6 +67,8 @@ export type MedicalData = z.infer<typeof medicalDataSchema>;
 export const emergencyAccessViewSchema = z.object({
   enabled: z.boolean(),
   url: z.string().optional(),
+  /** Texto opcional que el titular imprime junto a su QR (no es dato clínico). */
+  caption: z.string().optional(),
 });
 export type EmergencyAccessView = z.infer<typeof emergencyAccessViewSchema>;
 
@@ -92,6 +94,15 @@ export const emergencyEnableResponseSchema = z.object({
   url: z.string(),
 });
 export type EmergencyEnableResponse = z.infer<typeof emergencyEnableResponseSchema>;
+
+/** Tope del texto que el titular puede imprimir junto a su QR. */
+export const EMERGENCY_MAX_CAPTION = 160;
+
+/** Cuerpo de `PUT /api/medical/emergency/caption`. Vacío borra el texto. */
+export const emergencyCaptionInputSchema = z.object({
+  caption: z.string().max(EMERGENCY_MAX_CAPTION, `Máximo ${EMERGENCY_MAX_CAPTION} caracteres`),
+});
+export type EmergencyCaptionInput = z.infer<typeof emergencyCaptionInputSchema>;
 
 /** Cuerpo de `PUT /api/medical/location`. La app móvil lo envía periódicamente. */
 export const updateLocationInputSchema = z.object({
