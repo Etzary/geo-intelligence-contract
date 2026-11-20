@@ -73,6 +73,17 @@ export const medicalAnalyticsSchema = z.object({
 });
 export type MedicalAnalytics = z.infer<typeof medicalAnalyticsSchema>;
 
+/** Métricas del complemento de QR de mascotas. */
+export const petAnalyticsSchema = z.object({
+  /** Mascotas registradas. */
+  pets: z.number(),
+  /** Mascotas con su QR publicado. */
+  emergency_enabled: z.number(),
+  /** Cuentas con al menos una mascota registrada. */
+  owners: z.number(),
+});
+export type PetAnalytics = z.infer<typeof petAnalyticsSchema>;
+
 export const subscriptionAnalyticsSchema = z.object({
   total: z.number(),
   active: z.number(),
@@ -95,6 +106,7 @@ export const analyticsOverviewSchema = z.object({
   providers: z.array(z.string()),
   users: userAnalyticsSchema,
   medical: medicalAnalyticsSchema,
+  pets: petAnalyticsSchema,
   subscriptions: subscriptionAnalyticsSchema,
 });
 export type AnalyticsOverview = z.infer<typeof analyticsOverviewSchema>;
@@ -106,6 +118,44 @@ export type OpsSubscriptionSummary = z.infer<typeof opsSubscriptionSummarySchema
 /** Respuesta de `GET /api/ops/analytics/medical`. */
 export const opsMedicalSummarySchema = medicalAnalyticsSchema;
 export type OpsMedicalSummary = z.infer<typeof opsMedicalSummarySchema>;
+
+/** Respuesta de `GET /api/ops/analytics/pets`. */
+export const opsPetSummarySchema = petAnalyticsSchema;
+export type OpsPetSummary = z.infer<typeof opsPetSummarySchema>;
+
+/**
+ * Una mascota tal como la ve el equipo de soporte. No incluye la ficha cifrada
+ * ni el token del QR: solo lo necesario para ubicar la mascota y su cuenta.
+ */
+export const opsPetSchema = z.object({
+  id: idSchema,
+  user_id: idSchema,
+  /** Correo del dueño, para localizar la cuenta sin una segunda consulta. */
+  user_email: z.string(),
+  name: z.string(),
+  emergency_enabled: z.boolean(),
+  created_at: timestampSchema,
+  updated_at: timestampSchema.optional(),
+});
+export type OpsPet = z.infer<typeof opsPetSchema>;
+
+/** Filtros del listado de mascotas de la consola. */
+export const opsPetsQuerySchema = z.object({
+  /** Correo del dueño; vacío lista todas las mascotas. */
+  email: z.string().trim().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+export type OpsPetsQuery = z.infer<typeof opsPetsQuerySchema>;
+
+/** Respuesta de `GET /api/ops/pets`. */
+export const opsPetsResponseSchema = z.object({
+  items: z.array(opsPetSchema).nullish().transform((value) => value ?? []),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+});
+export type OpsPetsResponse = z.infer<typeof opsPetsResponseSchema>;
 
 /** Respuesta de `GET /api/ops/plans` (catálogo completo, incluidos los inactivos). */
 export const opsPlansResponseSchema = z.object({

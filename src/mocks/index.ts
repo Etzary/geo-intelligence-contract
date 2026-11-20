@@ -7,10 +7,13 @@ import type {
   MedicalAnalytics,
   OpsGrant,
   OpsGrantResponse,
+  OpsPet,
   OpsPlanUpdateResponse,
   OpsPlansResponse,
+  OpsPetsResponse,
   OpsResyncResponse,
   OpsSession,
+  PetAnalytics,
   SubscriptionAnalytics,
 } from '../schemas/ops.js';
 import type { Plan, SubscribeOutcome, SubscriptionView } from '../schemas/subscription.js';
@@ -347,6 +350,7 @@ export function createMockHandlers({ baseUrl, state = createMockState() }: MockH
           two_factor_users: 21,
         },
         medical: medicalAnalytics(state),
+        pets: petAnalytics(),
         subscriptions: subscriptionAnalytics(state),
       };
       return HttpResponse.json(overview);
@@ -355,6 +359,26 @@ export function createMockHandlers({ baseUrl, state = createMockState() }: MockH
       HttpResponse.json(subscriptionAnalytics(state)),
     ),
     http.get(url('/api/ops/analytics/medical'), () => HttpResponse.json(medicalAnalytics(state))),
+    http.get(url('/api/ops/analytics/pets'), () => HttpResponse.json(petAnalytics())),
+    http.get(url('/api/ops/pets'), ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      const email = (params.get('email') ?? '').trim().toLowerCase();
+      const page = Math.max(1, Number(params.get('page')) || 1);
+      const limit = Math.max(1, Number(params.get('limit')) || 20);
+
+      const filtered = email
+        ? MOCK_OPS_PETS.filter((pet) => pet.user_email.toLowerCase() === email)
+        : MOCK_OPS_PETS;
+      const start = (page - 1) * limit;
+
+      const response: OpsPetsResponse = {
+        items: filtered.slice(start, start + limit),
+        total: filtered.length,
+        page,
+        limit,
+      };
+      return HttpResponse.json(response);
+    }),
     http.get(url('/api/ops/plans'), () => {
       const response: OpsPlansResponse = { plans: state.plans };
       return HttpResponse.json(response);
@@ -423,6 +447,34 @@ function subscriptionAnalytics(state: MockState): SubscriptionAnalytics {
     estimated_monthly_revenue: 2970,
     by_provider: state.providers.map((provider) => ({ key: provider, count: 18 })),
     by_plan: state.plans.map((plan) => ({ key: plan.code, count: 12 })),
+  };
+}
+
+/** Mascotas ficticias que sirve el listado de la consola en los mocks. */
+const MOCK_OPS_PETS: OpsPet[] = [
+  {
+    id: '665f00000000000000000011',
+    user_id: '665f00000000000000000001',
+    user_email: 'ana@example.com',
+    name: 'Luna',
+    emergency_enabled: true,
+    created_at: '2026-10-02T15:04:05.000Z',
+  },
+  {
+    id: '665f00000000000000000012',
+    user_id: '665f00000000000000000001',
+    user_email: 'ana@example.com',
+    name: 'Rocky',
+    emergency_enabled: false,
+    created_at: '2026-10-18T09:30:00.000Z',
+  },
+];
+
+function petAnalytics(): PetAnalytics {
+  return {
+    pets: MOCK_OPS_PETS.length,
+    emergency_enabled: MOCK_OPS_PETS.filter((pet) => pet.emergency_enabled).length,
+    owners: new Set(MOCK_OPS_PETS.map((pet) => pet.user_id)).size,
   };
 }
 
