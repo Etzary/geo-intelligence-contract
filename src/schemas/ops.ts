@@ -111,18 +111,6 @@ export const analyticsOverviewSchema = z.object({
 });
 export type AnalyticsOverview = z.infer<typeof analyticsOverviewSchema>;
 
-/** Respuesta de `GET /api/ops/analytics/subscriptions`. */
-export const opsSubscriptionSummarySchema = subscriptionAnalyticsSchema;
-export type OpsSubscriptionSummary = z.infer<typeof opsSubscriptionSummarySchema>;
-
-/** Respuesta de `GET /api/ops/analytics/medical`. */
-export const opsMedicalSummarySchema = medicalAnalyticsSchema;
-export type OpsMedicalSummary = z.infer<typeof opsMedicalSummarySchema>;
-
-/** Respuesta de `GET /api/ops/analytics/pets`. */
-export const opsPetSummarySchema = petAnalyticsSchema;
-export type OpsPetSummary = z.infer<typeof opsPetSummarySchema>;
-
 /**
  * Una mascota tal como la ve el equipo de soporte. No incluye la ficha cifrada
  * ni el token del QR: solo lo necesario para ubicar la mascota y su cuenta.
