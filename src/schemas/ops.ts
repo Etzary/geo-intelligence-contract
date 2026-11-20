@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { emailSchema, idSchema, timestampSchema } from './common.js';
+import {
+  FAQ_MAX_ANSWER,
+  FAQ_MAX_QUESTION,
+  feedbackKindSchema,
+} from './feedback.js';
 import { planSchema, subscriptionViewSchema } from './subscription.js';
 
 /**
@@ -221,3 +226,108 @@ export const opsSettingUpdateResponseSchema = z.object({
   setting: opsSettingSchema,
 });
 export type OpsSettingUpdateResponse = z.infer<typeof opsSettingUpdateResponseSchema>;
+
+/**
+ * Estado de revisión de un mensaje del usuario. `new` es lo recién recibido;
+ * `reviewed` es lo que ya atendió el equipo.
+ */
+export const opsFeedbackStatusSchema = z.enum(['new', 'reviewed']);
+export type OpsFeedbackStatus = z.infer<typeof opsFeedbackStatusSchema>;
+
+/**
+ * Un comentario, sugerencia o reporte de error tal como lo ve la consola. Incluye
+ * el correo del usuario cuando el mensaje vino de una cuenta con sesión.
+ */
+export const opsFeedbackSchema = z.object({
+  id: idSchema,
+  kind: feedbackKindSchema,
+  message: z.string(),
+  /** Correo o teléfono que dejó el usuario para responderle. */
+  contact: z.string().optional(),
+  /** Contexto del envío: pantalla, versión, plataforma. */
+  context: z.string().optional(),
+  /** Correo de la cuenta que envió el mensaje; vacío si no había sesión. */
+  user_email: z.string(),
+  status: opsFeedbackStatusSchema,
+  created_at: timestampSchema,
+  updated_at: timestampSchema.optional(),
+});
+export type OpsFeedback = z.infer<typeof opsFeedbackSchema>;
+
+/** Filtros del listado de mensajes de la consola. */
+export const opsFeedbackQuerySchema = z.object({
+  kind: feedbackKindSchema.optional(),
+  status: opsFeedbackStatusSchema.optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+export type OpsFeedbackQuery = z.infer<typeof opsFeedbackQuerySchema>;
+
+/** Respuesta de `GET /api/ops/feedback`. */
+export const opsFeedbackResponseSchema = z.object({
+  items: z.array(opsFeedbackSchema).nullish().transform((value) => value ?? []),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+});
+export type OpsFeedbackResponse = z.infer<typeof opsFeedbackResponseSchema>;
+
+/** Cuerpo de `PATCH /api/ops/feedback/:id`: cambia el estado de revisión. */
+export const updateFeedbackStatusInputSchema = z.object({
+  status: opsFeedbackStatusSchema,
+});
+export type UpdateFeedbackStatusInput = z.infer<typeof updateFeedbackStatusInputSchema>;
+
+/** Respuesta de `PATCH /api/ops/feedback/:id`. */
+export const opsFeedbackUpdateResponseSchema = z.object({
+  message: z.string(),
+  item: opsFeedbackSchema,
+});
+export type OpsFeedbackUpdateResponse = z.infer<typeof opsFeedbackUpdateResponseSchema>;
+
+/** Una pregunta frecuente tal como la administra la consola. */
+export const opsFaqSchema = z.object({
+  id: idSchema,
+  question: z.string(),
+  answer: z.string(),
+  /** Posición en la que se muestra: menor número, primero. */
+  sort_order: z.number().int(),
+  /** Si es `false`, no aparece en el sitio público. */
+  published: z.boolean(),
+  created_at: timestampSchema,
+  updated_at: timestampSchema.optional(),
+});
+export type OpsFaq = z.infer<typeof opsFaqSchema>;
+
+/** Respuesta de `GET /api/ops/faqs`. */
+export const opsFaqsResponseSchema = z.object({
+  faqs: z.array(opsFaqSchema).nullish().transform((value) => value ?? []),
+});
+export type OpsFaqsResponse = z.infer<typeof opsFaqsResponseSchema>;
+
+/** Cuerpo de `POST /api/ops/faqs`. */
+export const createFaqInputSchema = z.object({
+  question: z.string().trim().min(1, 'Escribe la pregunta').max(FAQ_MAX_QUESTION),
+  answer: z.string().trim().min(1, 'Escribe la respuesta').max(FAQ_MAX_ANSWER),
+  published: z.boolean().optional(),
+});
+export type CreateFaqInput = z.infer<typeof createFaqInputSchema>;
+
+/**
+ * Cuerpo de `PATCH /api/ops/faqs/:id`. Solo se aplican los campos enviados, de
+ * modo que se puede editar el texto, publicar/despublicar o mover el orden.
+ */
+export const updateFaqInputSchema = z.object({
+  question: z.string().trim().min(1).max(FAQ_MAX_QUESTION).optional(),
+  answer: z.string().trim().min(1).max(FAQ_MAX_ANSWER).optional(),
+  published: z.boolean().optional(),
+  sort_order: z.number().int().optional(),
+});
+export type UpdateFaqInput = z.infer<typeof updateFaqInputSchema>;
+
+/** Respuesta de `POST /api/ops/faqs` y `PATCH /api/ops/faqs/:id`. */
+export const opsFaqResponseSchema = z.object({
+  message: z.string(),
+  faq: opsFaqSchema,
+});
+export type OpsFaqResponse = z.infer<typeof opsFaqResponseSchema>;
